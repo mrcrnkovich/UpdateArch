@@ -1,14 +1,11 @@
 package git
 
 import (
+	"bytes"
 	"fmt"
 	"os/exec"
 	"regexp"
 )
-
-func main() {
-	fmt.Println("vim-go")
-}
 
 type GitDir struct {
 	Name    string
@@ -16,25 +13,28 @@ type GitDir struct {
 	Updated bool
 }
 
-func Pull(workDir, fileName string) string {
+func Pull(pkg *GitDir) (*GitDir, error) {
 
-	fmt.Printf("Now syncing: %s\n", fileName)
+	fmt.Printf("Now syncing: %s\n", pkg.Name)
 
-	gitPackage := workDir + fileName
+	var output, err bytes.Buffer
+	cmd := exec.Command("/usr/bin/git", "pull")
+	cmd.Dir = pkg.Path + pkg.Name
+	cmd.Stdin = nil
+	cmd.Stdout = &output
+	cmd.Stderr = &err
 
 	// Sync git files
-	output, e := exec.Command("git", "-C", gitPackage, "pull").Output()
-	if e != nil {
-		fmt.Printf("%s", e)
+	if e := cmd.Run(); e != nil {
+		return nil, e
 	}
-	fmt.Printf("%s", output)
-
-	notNew, _ := regexp.Match(`up to date`, []byte(output))
-
 	//clean up repo and dirs?
-	if notNew {
-		return fmt.Sprintf("%s", "completed")
-	} else {
-		return fmt.Sprintf("%s", "new version found")
-	}
+	notNew, _ := regexp.Match(`up to date`, output.Bytes())
+	pkg.Updated = !notNew
+
+	return pkg, nil
+}
+
+func Clone(workDir, fileName string) {
+	return
 }
