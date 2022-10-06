@@ -3,60 +3,77 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
+	"log"
 	"os"
-	"os/exec"
-	"regexp"
+
+	"git"
+	"pacman"
 )
 
-var filename string
+var writer io.Writer = os.Stdout
+var AurPath string
+var RepoPath string
+
+var ForceBuild bool
 
 func init() {
-	flag.StringVar(&filename, "filename", "", "file path to open")
-	flag.Parse()
-}
 
-func sync_dir(work_dir, file_name string, ch chan<- string) {
+	HOMEDIR, _ := os.UserHomeDir()
 
-	fmt.Printf("Now syncing: %s\n", file_name)
-
-	git_pack := work_dir + file_name
-
-	// Sync git files
-	output, _ := exec.Command("git", "-C", git_pack, "pull").Output()
-	fmt.Printf("%s", output)
-
-	notNew, _ := regexp.Match(`up to date`, []byte(output))
-
-	output, _ = exec.Command("git", "-C", git_pack, "pull").Output()
-
-	os.Chdir(git_pack)
-
-	// make new package
-	output, _ = exec.Command("makepkg", "--noconfirm", "--cleanbuild", "--syncdeps", "--rmdeps", "--clean", "--force").Output()
-
-	// add to repo
-	output, _ = exec.Command("repo-add", "--quiet", "--new", "--remove").Output()
-
-	//clean up repo and dirs?
-
-	if notNew {
-		ch <- fmt.Sprintf("%s", "completed")
+	if val, ok := os.LookupEnv("AUR_PATH"); ok {
+		AurPath = val
 	} else {
-		ch <- fmt.Sprintf("%s", "new version found")
+		AurPath = HOMEDIR + "/.local/share/aur/"
 	}
+	if val, ok := os.LookupEnv("REPO_PATH"); ok {
+		RepoPath = val
+	} else {
+		RepoPath = HOMEDIR + "/.local/share/packages/mcrnkovich.db.tar.gz"
+	}
+
+	flag.BoolVar(&ForceBuild, "force", false, "force building of packages")
+	flag.Parse()
+
+	log.Println(AurPath)
+	log.Println(RepoPath)
 }
 
 func main() {
+	os.Setenv("PKGDEST", "/home/packages")
+	defer os.Unsetenv("PKGDEST")
 
-	AUR_DIR := "/home/mike/build/aur/"
-
-	ch := make(chan string)
-	files, _ := os.ReadDir(AUR_DIR)
-	for _, file := range files {
-		go sync_dir(AUR_DIR, file.Name(), ch)
+	files, e := os.ReadDir(AurPath)
+	if e != nil {
+		log.Fatal("Unable to read dir:", AurPath)
 	}
 
-	for range files {
-		fmt.Println(<-ch)
+	for _, file := range files {
+		UpdateAndSync(file.Name())
+	}
+}
+
+// if file point to a Dir
+func UpdateAndSync(fileName string) {
+
+	GitPkg := git.GitDir{fileName, AurPath, false}
+	gitPack, e := git.Pull(&GitPkg)
+
+	if e != nil {
+		fmt.Fprintf(writer, "%s", e)
+	} else if !gitPack.Updated && !ForceBuild {
+		fmt.Fprintf(writer, "No updates found for package: %s\n", fileName)
+		return
+	}
+
+	packages, err := pacman.MakePackage(AurPath + fileName)
+	if err != nil {
+		log.Printf("%s", err)
+	}
+
+	for _, pkg := range packages {
+		if e := pacman.UpdateRepo(RepoPath, pkg); e != nil {
+			fmt.Fprintf(writer, "%s", e)
+		}
 	}
 }
