@@ -1,75 +1,117 @@
 package pacman
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
-	"regexp"
-	"strings"
 )
 
-func main() {
-	fmt.Println("vim-go")
+var writer io.Writer = os.Stdout
+
+type CommandError struct {
+	text   error
+	stderr string
 }
 
-func MakePackage(gitPackage string) (string, error) {
+func (e CommandError) Error() string {
+	return fmt.Sprintf("makepkg  %s", e.text)
+}
 
-	e := os.Chdir(gitPackage)
-	if e != nil {
-		fmt.Printf("Error changing into %s\n", e.Error())
+func MakePackage(pkgPath string) ([]string, error) {
+
+	var e error
+	var pkgs []string
+	if pkgs, e = packageList(pkgPath); e != nil {
+		return nil, e
 	}
-
-	Package, _ := exec.Command("makepkg", "--packagelist").Output()
-	pkgName := strings.TrimRight(string(Package), "\n")
-
-	fmt.Fprintf(os.Stdin, "Make package: %s\n", gitPackage)
 
 	/*
-		out, e := exec.Command(
-			"makepkg",
-			"--noconfirm",
-			"--syncdeps",
-			"--rmdeps",
-			"--clean",
-			"--force",
-		).Output()
-
-		if e != nil {
-			fmt.Println(e)
+		if err := makePackage(pkgPath); err != nil {
+			return nil, err
 		}
-		fmt.Println(string(out))
 	*/
 
-	return pkgName, nil
+	return pkgs, nil
 }
 
-func UpdateRepo(repoPath string, pkgName string) error {
+func packageList(pkgPath string) ([]string, error) {
 
-	fmt.Fprintf(os.Stdin, "Adding package: %s to %s\n", pkgName, repoPath)
+	var result, err bytes.Buffer
+	buffer := bufio.NewScanner(&result)
+	PkgDestEnv := fmt.Sprintf("PKGDEST=%s", "/home/mike/.local/share/packages")
 
-	output, e := exec.Command("repo-add",
-		"--new",
-		"--remove",
-		repoPath,
-		pkgName,
-	).Output()
-	if e != nil {
-		return e
+	cmd := exec.Command(
+		"/usr/bin/makepkg",
+		"--packagelist",
+	)
+	cmd.Dir = pkgPath
+	cmd.Stdin = nil
+	cmd.Stdout = &result
+	cmd.Stderr = &err
+	cmd.Env = append(cmd.Environ(), PkgDestEnv)
+
+	if e := cmd.Run(); e != nil {
+		fmt.Printf("%d", cmd.ProcessState.ExitCode())
+		return nil, &CommandError{e, err.String()}
 	}
 
-	fmt.Fprintf(os.Stdin, "This package was made: %s", output)
+	var packages []string
+	for buffer.Scan() {
+		txt := buffer.Text()
+		packages = append(packages, txt)
+		fmt.Fprintf(writer, "%s\n", txt)
+	}
+
+	return packages, nil
+}
+
+func makePackage(pkgPath string) error {
+
+	var result, err bytes.Buffer
+
+	cmd := exec.Command(
+		"/usr/bin/makepkg",
+		"--noconfirm",
+		"--syncdeps",
+		"--rmdeps",
+		"--clean",
+		"--force",
+	)
+	cmd.Dir = pkgPath
+	cmd.Stdout = &result
+	cmd.Stderr = &err
+	cmd.Env = append(cmd.Environ(), "PKGDEST=/home/mike/tmp/packages")
+
+	if e := cmd.Run(); e != nil {
+		fmt.Println(err.String())
+		return e
+	}
+	//fmt.Fprintf(writer, "%s\n", result.String())
 
 	return nil
 }
 
-func printPackageInfo(pkg []byte) {
-	p := regexp.MustCompile(`(?:\/home\/packages\/)(?P<package>.+)-(?P<version>[0-9]+\.?[0-9]*\.?[0-9]*)-(?P<q>\d)-(?P<arch>.+)(?:\.pkg\.tar\.zst)`)
-	matches := p.FindSubmatch(pkg)
-	keys := p.SubexpNames()
+func UpdateRepo(repoPath string, pkgName string) error {
 
-	for i, m := range matches {
-		if i > 0 {
-			fmt.Printf("%-15s: %q\n", keys[i], m)
-		}
+	var result, err bytes.Buffer
+	fmt.Fprintf(writer, "Adding package: %s to %s\n", pkgName, repoPath)
+
+	cmd := exec.Command("repo-add",
+		"--new",
+		"--remove",
+		repoPath,
+		pkgName,
+	)
+	cmd.Stdout = &result
+	cmd.Stderr = &err
+
+	if e := cmd.Run(); e != nil {
+		fmt.Fprintf(writer, "Package output prior to error: %s", result.String())
+		return e
 	}
+
+	return nil
 }
