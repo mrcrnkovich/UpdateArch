@@ -8,31 +8,31 @@ import (
 )
 
 type GitDir struct {
-	Name    string
 	Path    string
 	Updated bool
 }
 
-func Pull(pkg *GitDir) (*GitDir, error) {
+func (pkg *GitDir) Pull(arg ...string) error {
 
-	fmt.Printf("Now syncing: %s\n", pkg.Name)
+	fmt.Printf("Now syncing: %s\n", pkg.Path)
 
 	var output, err bytes.Buffer
 	cmd := exec.Command("/usr/bin/git", "pull")
-	cmd.Dir = pkg.Path + pkg.Name
-	cmd.Stdin = nil
+
+	cmd.Args = append(cmd.Args, arg...)
+	cmd.Dir = pkg.Path
 	cmd.Stdout = &output
 	cmd.Stderr = &err
 
 	// Sync git files
 	if e := cmd.Run(); e != nil {
-		return nil, e
+		return fmt.Errorf("%s %s", err.String(), e)
 	}
 	//clean up repo and dirs?
 	notNew, _ := regexp.Match(`up to date`, output.Bytes())
 	pkg.Updated = !notNew
 
-	return pkg, nil
+	return nil
 }
 
 func Clone(workDir, fileName string) {
