@@ -66,7 +66,7 @@ func UpdateAndSync(fileName string) {
 		return
 	}
 
-	packages, err := pacman.MakePackage(fileName)
+	packages, err := pacman.MakePackage(fileName, RepoPath)
 	if err != nil {
 		log.Printf("%s", err)
 	}

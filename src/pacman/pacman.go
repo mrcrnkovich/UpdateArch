@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 )
 
 var writer io.Writer = os.Stdout
@@ -20,7 +21,7 @@ func (e CommandError) Error() string {
 	return fmt.Sprintf("makepkg  %s", e.text)
 }
 
-func MakePackage(pkgPath string) ([]string, error) {
+func MakePackage(pkgPath string, repoPath string) ([]string, error) {
 
 	var e error
 	var pkgs []string
@@ -28,7 +29,9 @@ func MakePackage(pkgPath string) ([]string, error) {
 		return nil, e
 	}
 
-	if err := makePackage(pkgPath); err != nil {
+	repoDir := filepath.Dir(repoPath)
+
+	if err := makePackage(pkgPath, repoDir); err != nil {
 		return nil, err
 	}
 
@@ -66,9 +69,10 @@ func packageList(pkgPath string) ([]string, error) {
 	return packages, nil
 }
 
-func makePackage(pkgPath string) error {
+func makePackage(pkgPath string, repoPath string) error {
 
 	var result, err bytes.Buffer
+	var pkgDest = fmt.Sprintf("PKGDEST=%s", repoPath)
 
 	cmd := exec.Command(
 		"/usr/bin/makepkg",
@@ -81,7 +85,7 @@ func makePackage(pkgPath string) error {
 	cmd.Dir = pkgPath
 	cmd.Stdout = &result
 	cmd.Stderr = &err
-	cmd.Env = append(cmd.Environ(), "PKGDEST=/home/mike/.local/share/packages")
+	cmd.Env = append(cmd.Environ(), pkgDest)
 
 	if e := cmd.Run(); e != nil {
 		fmt.Println(err.String())
