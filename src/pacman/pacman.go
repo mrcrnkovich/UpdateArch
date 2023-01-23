@@ -28,11 +28,9 @@ func MakePackage(pkgPath string) ([]string, error) {
 		return nil, e
 	}
 
-	/*
-		if err := makePackage(pkgPath); err != nil {
-			return nil, err
-		}
-	*/
+	if err := makePackage(pkgPath); err != nil {
+		return nil, err
+	}
 
 	return pkgs, nil
 }
@@ -83,7 +81,7 @@ func makePackage(pkgPath string) error {
 	cmd.Dir = pkgPath
 	cmd.Stdout = &result
 	cmd.Stderr = &err
-	cmd.Env = append(cmd.Environ(), "PKGDEST=/home/mike/tmp/packages")
+	cmd.Env = append(cmd.Environ(), "PKGDEST=/home/mike/.local/share/packages")
 
 	if e := cmd.Run(); e != nil {
 		fmt.Println(err.String())
